@@ -1,0 +1,6 @@
+"0","# Define the folder path"
+"0","folder_path <- ""workfiles"""
+"0",""
+"0","# Delete the folder"
+"0","unlink(folder_path, recursive = TRUE)"
+"0",""

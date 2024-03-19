@@ -1,0 +1,807 @@
+---
+title: "Paper 1 - Results"
+author: "Mona"
+date: "2024-02-05"
+output: 
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, cache = F, fig.width=5, results = 'asis')
+
+library(tidyverse)
+library(lmerTest)
+library(afex)
+library(tidyr)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(janitor)
+library(knitr)
+library(lme4)
+library(sjPlot)
+library(TraMineR)
+library(ggseqplot)
+library(cluster)
+library(rstatix)
+
+q2_nasa <- read.csv("questionnaire_analysis/data/q2_nasa.csv")
+q2_sam <- read.csv("questionnaire_analysis/data/q2_sam.csv")
+q2_post_scenario_t <- read.csv("questionnaire_analysis/data/q2_post_scenario_t.csv")
+
+action_count_bind <- read.csv("map_logs_analysis/log_files_proc/action_count_bind.csv")
+action_count_phase_bind <- read.csv("map_logs_analysis/log_files_proc/action_count_phase_bind.csv")
+action_count_seq <- read.csv("map_logs_analysis/log_files_proc/action_count_seq.csv")
+
+phases_screenlock_time_bind <- read.csv("map_logs_analysis/log_files_proc/phases_screenlock_time_bind.csv")
+
+task_phase_time_bind <- read.csv("map_logs_analysis/log_files_proc/task_phase_time_bind.csv")
+scenario_task_phase_time_bind <- read.csv("map_logs_analysis/log_files_proc/scenario_task_phase_time_bind.csv")
+
+```
+
+```{r lme_prep, include=F}
+
+df_prep_fun <- function(df){
+  df %>% 
+  mutate(map = case_when(
+    scenario_id == 1 ~ "non_adapt",
+    scenario_id == 2 ~ "adapt",
+    scenario_id == 3 ~ "non_adapt",
+    scenario_id == 4 ~ "adapt"
+  ),
+  traffic = case_when(
+    scenario_id == 1 ~ "low",
+    scenario_id == 2 ~ "low",
+    scenario_id == 3 ~ "high",
+    scenario_id == 4 ~ "high"
+  ))
+}
+
+q2_nasa_prep <- df_prep_fun(q2_nasa) 
+q2_sam_prep <- df_prep_fun(q2_sam) 
+q2_post_scenario_t_prep <- df_prep_fun(q2_post_scenario_t) 
+
+action_count_bind_prep <- df_prep_fun(action_count_bind) 
+action_count_phase_bind_prep <- df_prep_fun(action_count_phase_bind) 
+phases_screenlock_time_bind_prep <- df_prep_fun(phases_screenlock_time_bind) 
+task_phase_time_bind_prep <- df_prep_fun(task_phase_time_bind) 
+scenario_task_phase_time_bind_prep <- df_prep_fun(scenario_task_phase_time_bind) 
+
+
+lme_model <- function(iv, dat){
+  lmer(as.formula(paste(iv, "~ map*traffic + (map + traffic | id)")),
+                 data = dat, 
+                 control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 10000)))
+}
+
+action_count_bind_prep_baseline <- action_count_bind_prep %>% group_by(id, scenario_id) %>% distinct(id, scenario_id, map, traffic) 
+
+action_count_bind_prep_fun <- function(dat, var, perc_var){
+  dat %>% filter(action_type_re == var) %>% full_join(action_count_bind_prep_baseline) %>% 
+    mutate({{perc_var}} := case_when(is.na(get(perc_var)) ~ 0,
+                                .default = get(perc_var)),
+           action_type_re = case_when(is.na(action_type_re) ~ var,
+                                .default = action_type_re))
+}
+
+```
+
+```{r saa_prep, include=F}
+
+action_count_raw_wide <- action_count_seq %>% select(-c(1)) %>% group_by(id, scenario_id, t_id) %>%  pivot_wider(names_from = seq, values_from = action_type_re)
+
+action_count_raw_wide_s1 <- action_count_raw_wide %>% filter(scenario_id == 1)
+action_count_raw_wide_s2 <- action_count_raw_wide %>% filter(scenario_id == 2)
+action_count_raw_wide_s3 <- action_count_raw_wide %>% filter(scenario_id == 3)
+action_count_raw_wide_s4 <- action_count_raw_wide %>% filter(scenario_id == 4)
+
+seq_action_alphabet <-  c("task_accepted", "checked_in", "button_last_message", "map_position", "zoom", "search", "suggestion_clicked", "poi_clicked", "poi_clicked_chose_yes", "poi_clicked_chose_no", "set_navigation", "stop_navigation", "set_navigation_wrong", "button_follow_player", "button_focus_player", "screenlock_true", "warning_time", "error_time", "debug_f12_active_task")
+
+seq_action_labels <- c("task_accepted", "checked_in", "button_last_message", "map_position","zoom", "search", "suggestion_clicked", "poi_clicked","poi_clicked_chose_yes", "poi_clicked_chose_no","set_navigation", "stop_navigation", "set_navigation_wrong", "button_follow_player", "button_focus_player", "screenlock_true", "warning_time", "error_time", "debug_f12_active_task")
+
+seq_action_scodes <- c("TA", "CI", "BLa", "M","Z", "S", "Su", "PCl","PY", "PN","SeN", "StN", "SNW", "BFl", "BFc", "ST", "W", "E", "Dg")
+
+cpal_seq_analysis <- c("#bdbdbd","#737373", "#67000d", "#9e9ac8", "#807dba", "#a6bddb", "#3690c0", "#f16913", "#fdd0a2", "#cb181d", "#006d2c", "#a1d99b", "#66c2a4", "#fff7bc", "#fec44f", "#fa9fb5", "black", "black", "black")
+
+seq_action_analysis_s1 <- seqdef(action_count_raw_wide_s1, 4:164, alphabet = seq_action_alphabet, states = seq_action_scodes, labels = seq_action_labels, xtstep = 6)
+seq_action_analysis_s2 <- seqdef(action_count_raw_wide_s2, 4:164, alphabet = seq_action_alphabet, states = seq_action_scodes, labels = seq_action_labels, xtstep = 6)
+seq_action_analysis_s3 <- seqdef(action_count_raw_wide_s3, 4:164, alphabet = seq_action_alphabet, states = seq_action_scodes, labels = seq_action_labels, xtstep = 6)
+seq_action_analysis_s4 <- seqdef(action_count_raw_wide_s4, 4:164, alphabet = seq_action_alphabet, states = seq_action_scodes, labels = seq_action_labels, xtstep = 6)
+
+cpal(seq_action_analysis_s1) <- c(cpal_seq_analysis)
+cpal(seq_action_analysis_s2) <- c(cpal_seq_analysis)
+cpal(seq_action_analysis_s3) <- c(cpal_seq_analysis)
+cpal(seq_action_analysis_s4) <- c(cpal_seq_analysis)
+
+s1_dist_om <- seqdist(seq_action_analysis_s1, method = "OM", indel = 1, sm = "TRATE")
+s1_clusterward <- agnes(s1_dist_om, diss = TRUE, method = "ward")
+plot(s1_clusterward, which.plot = 2)
+s1_cl_3 <- cutree(s1_clusterward, k = 3)
+s1_cl_3_fac <- factor(s1_cl_3, labels = paste("Type", 1:3))
+
+s2_dist_om <- seqdist(seq_action_analysis_s2, method = "OM", indel = 1, sm = "TRATE")
+s2_clusterward <- agnes(s2_dist_om, diss = TRUE, method = "ward")
+plot(s2_clusterward, which.plot = 2)
+s2_cl_3 <- cutree(s2_clusterward, k = 3)
+s2_cl_3_fac <- factor(s2_cl_3, labels = paste("Type", 1:3))
+
+s3_dist_om <- seqdist(seq_action_analysis_s3, method = "OM", indel = 1, sm = "TRATE")
+s3_clusterward <- agnes(s3_dist_om, diss = TRUE, method = "ward")
+plot(s3_clusterward, which.plot = 2)
+s3_cl_2 <- cutree(s3_clusterward, k = 2)
+s3_cl_2_fac <- factor(s3_cl_2, labels = paste("Type", 1:2))
+
+s4_dist_om <- seqdist(seq_action_analysis_s4, method = "OM", indel = 1, sm = "TRATE")
+s4_clusterward <- agnes(s4_dist_om, diss = TRUE, method = "ward")
+plot(s4_clusterward, which.plot = 2)
+s4_cl_3 <- cutree(s4_clusterward, k = 3)
+s4_cl_3_fac <- factor(s4_cl_3, labels = paste("Type", 1:3))
+
+```
+
+# Research objectives, questions, and hypotheses
+
+## Research objectives
+
+1. Investigate the impact of traffic density (as an environmental map use context attribute) and of map design adaptation types on the map interactivity behavior.
+2. Evaluate the task performance and participants’ self-rated affective response and perception associated with traffic density condition and map adaptation type.
+
+## Research question
+
+1. How is mobile map-aided navigation performance in urban virtual environments related to map design adaptation as a result of environmental context (i.e., traffic density)? 
+    * We contend that participants will interact with the mobile map differently (i.e., zoom, pan, etc.) in low and high traffic density conditions and respective map adaptation (filtered landmark density vs. unfiltered landmark density). Investigating differences in interactivity behavior helps to inform context-aware map adaptation.
+
+2. How are traffic density conditions and adaptation types perceived by the participants?
+3. How do traffic density conditions and adaptation types impact the task performance (i.e., task completion and time spent on task)?
+
+## Hypotheses
+
+- H1: High traffic density increases cognitive load and self-rated agitation of map users, and thus decreases mobile map interactions and navigation task performance (i.e., increase of task completion time and decrease of task completion success). 
+  * because participants have a higher demand walking through traffic-dense areas
+
+- H2: Adapted mobile maps used in traffic-dense environments decrease mobile map interactions and map users’ cognitive load, and thus increase task performance (i.e., decrease of task completion time and increase of task completion success).
+  * because participants are assisted to find the relevant POIs more easily
+
+
+# Results
+
+## Hypothesis 1
+
+High traffic density increases cognitive load and self-rated agitation of map users, and thus decreases mobile map interactions and navigation task performance (i.e., increase of task completion time and decrease of task completion success). 
+
+
+### Map interactions {#map_interactions} 
+
+
+</br></br>
+
+```{r map_interactions_1, fig.width = 7}
+
+action_count_bind$action_type_re_f <-factor(action_count_bind$action_type_re, levels = c("map_position", "zoom", "search", "suggestion_clicked", "poi_clicked", "poi_clicked_chose_no", "button_focus_player", "set_navigation", "set_navigation_wrong", "stop_navigation", "button_follow_player", "screenlock_true",  "button_last_message"), labels = c("map panning", "zooming", "searching", "click on suggested search item", "click on POI", "exit POI pop-up", "center on location", "navigate to POI", "navigation target wrongly set", "stop navigation", "follow location on navigation route", "screen lock activation",   "click on last task message"))
+
+cat("\n####", "Percentage of map interactions by scenario", "\n")
+action_count_bind %>% filter(action_type_re == "map_position") %>% 
+  ggplot(aes(y = perc, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  #facet_wrap(vars(action_type_re_f), ncol = 3, scales = "fixed") +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  ylim(0,0.8) +
+  labs(x = "", y = "Percentage of used action: map panning", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 14), legend.position= "top")
+
+```
+
+
+```{r map_interactions_2, fig.width = 13, fig.height=13}
+
+action_count_bind$action_type_re_f <-factor(action_count_bind$action_type_re, levels = c("map_position", "zoom", "search", "suggestion_clicked", "poi_clicked", "poi_clicked_chose_no", "button_focus_player", "set_navigation", "set_navigation_wrong", "stop_navigation", "button_follow_player", "screenlock_true",  "button_last_message"), labels = c("map panning", "zooming", "searching", "click on suggested search item", "click on POI", "exit POI pop-up", "center on location", "navigate to POI", "navigation target wrongly set", "stop navigation", "follow location on navigation route", "screen lock activation",   "click on last task message"))
+
+action_count_bind %>% filter(action_type_re != "map_position" & action_type_re_f != "checked_in" & action_type_re != "poi_clicked_chose_yes" & action_type_re != "task_accepted" & action_type_re != "screenlock_false" & action_type_re != "debug_f12_active_task" & action_type_re != "error_time" & action_type_re != "warning_time") %>% 
+  ggplot(aes(y = perc, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  facet_wrap(vars(action_type_re_f), ncol = 3, scales = "fixed") +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  labs(x = "", y = "Percentage of used actions", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 14), legend.position= "top")
+
+
+```
+
+```{r map_interactions_3, fig.width = 10, fig.height=8}
+
+action_count_bind_prep_mappos <- action_count_bind_prep_fun(action_count_bind, "map_position", "perc")
+action_count_bind_prep_zoom <- action_count_bind_prep_fun(action_count_bind, "zoom", "perc")
+action_count_bind_prep_search <- action_count_bind_prep_fun(action_count_bind, "search", "perc")
+action_count_bind_prep_suggcli <- action_count_bind_prep_fun(action_count_bind, "suggestion_clicked", "perc")
+action_count_bind_prep_poicl <- action_count_bind_prep_fun(action_count_bind, "poi_clicked", "perc")
+action_count_bind_prep_poiclno <- action_count_bind_prep_fun(action_count_bind, "poi_clicked_chose_no", "perc")
+action_count_bind_prep_bufopl <- action_count_bind_prep_fun(action_count_bind, "button_focus_player", "perc")
+action_count_bind_prep_bufollowpl <- action_count_bind_prep_fun(action_count_bind, "button_follow_player", "perc")
+action_count_bind_prep_setnav <- action_count_bind_prep_fun(action_count_bind, "set_navigation", "perc")
+action_count_bind_prep_stopnav <- action_count_bind_prep_fun(action_count_bind, "stop_navigation", "perc")
+action_count_bind_prep_setnavwrong <- action_count_bind_prep_fun(action_count_bind, "set_navigation_wrong", "perc")
+action_count_bind_prep_bula <- action_count_bind_prep_fun(action_count_bind, "button_last_message", "perc")
+
+outlier_action_logs <- action_count_bind_prep_mappos %>% group_by(scenario_id) %>% identify_outliers(perc) 
+outlier_action_logs <- action_count_bind_prep_zoom %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_search %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_suggcli %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_poiclno %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_bufopl %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_bufollowpl %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_setnav %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_stopnav %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_setnavwrong %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+outlier_action_logs <- action_count_bind_prep_bula %>% group_by(scenario_id) %>% identify_outliers(perc) %>% rbind(outlier_action_logs)
+
+cat("\n####", "Action log: outliers", "\n")
+kable(outlier_action_logs)
+
+cat("\n")
+cat("\n####", "Action log: map panning", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_mappos), show.re.var = FALSE, title = "Regression model: map panning")
+
+cat("\n####", "Action log: zooming", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_zoom), show.re.var = FALSE, title = "Regression model: zooming")
+
+cat("\n####", "Action log: searching", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_search), show.re.var = FALSE, title = "Regression model: searching")
+
+cat("\n####", "Action log: click on suggested search item", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_suggcli), show.re.var = FALSE, title = "Regression model: click on suggested search item")
+
+cat("\n####", "Action log: click on POI", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_poicl), show.re.var = FALSE, title = "Regression model: click on POI")
+
+cat("\n####", "Action log: exit POI pop-up", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_poiclno), show.re.var = FALSE, title = "Regression model: exit POI pop-up")
+
+cat("\n####", "Action log: center on location", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_bufopl), show.re.var = FALSE, title = "Regression model: center on location")
+
+cat("\n####", "Action log: follow location on navigation route", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_bufollowpl), show.re.var = FALSE, title = "Regression model: follow location on navigation route")
+
+cat("\n####", "Action log: navigate to POI", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_setnav), show.re.var = FALSE, title = "Regression model: navigate to POI")
+
+cat("\n####", "Action log: stop navigation", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_stopnav), show.re.var = FALSE, title = "Regression model: stop navigation")
+
+cat("\n####", "Action log: wrongly set navigation target", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_setnavwrong), show.re.var = FALSE, title = "Regression model: wrongly set navigation target")
+
+cat("\n####", "Action log: click on last message", "\n")
+tab_model(lme_model("perc", action_count_bind_prep_bula), show.re.var = FALSE, title = "Regression model: click on last message")
+
+
+```
+
+```{r map_interactions_phases_1, fig.width = 7}
+
+action_count_phase_bind$p_desc_f <- factor(action_count_phase_bind$p_desc, levels = c("planning", "navigating"), labels = c("Planning phase", "Navigation phase"))
+
+action_count_phase_bind$action_type_re_f <-factor(action_count_phase_bind$action_type_re, levels = c("map_position", "zoom", "search", "suggestion_clicked", "poi_clicked", "poi_clicked_chose_no", "button_focus_player", "set_navigation", "set_navigation_wrong", "stop_navigation", "button_follow_player", "screenlock_true",  "button_last_message"), labels = c("map panning", "zooming", "searching", "click on suggested search item", "click on POI", "exit POI pop-up", "center on location", "navigate to POI", "navigation target wrongly set", "stop navigation", "follow location on navigation route", "screen lock activation",   "click on last task message"))
+
+cat("\n####", "Percentage of map interactions by scenario and task phase", "\n")
+action_count_phase_bind %>% filter(action_type_re == "map_position") %>% 
+  ggplot(aes(y = action_perc, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  facet_wrap(vars(p_desc_f), ncol = 3, scales = "fixed") +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  ylim(0,0.8) +
+  labs(x = "", y = "Percentage of used action: map panning", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 14), legend.position= "top")
+
+```
+
+```{r map_interactions_phases_2, fig.width = 8, fig.height=24}
+
+action_count_phase_bind$p_desc_f <- factor(action_count_phase_bind$p_desc, levels = c("planning", "navigating"), labels = c("Planning phase", "Navigation phase"))
+
+action_count_phase_bind$action_type_re_f <-factor(action_count_phase_bind$action_type_re, levels = c("map_position", "zoom", "search", "suggestion_clicked", "poi_clicked", "poi_clicked_chose_no", "button_focus_player", "set_navigation", "set_navigation_wrong", "stop_navigation", "button_follow_player", "screenlock_true",  "button_last_message"), labels = c("map panning", "zooming", "searching", "click on suggested search item", "click on POI", "exit POI pop-up", "center on location", "navigate to POI", "navigation target wrongly set", "stop navigation", "follow location on navigation route", "screen lock activation",   "click on last task message"))
+
+action_count_phase_bind %>% filter(action_type_re != "map_position" & action_type_re_f != "checked_in" & action_type_re != "poi_clicked_chose_yes" & action_type_re != "task_accepted" & action_type_re != "screenlock_false" & action_type_re != "debug_f12_active_task" & action_type_re != "error_time" & action_type_re != "warning_time") %>% 
+  ggplot(aes(y = action_perc, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  facet_grid(action_type_re_f ~ p_desc_f, scales = "fixed", labeller = label_wrap_gen(width=25)) +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  labs(x = "", y = "Percentage of used actions", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 14), legend.position= "top")
+
+
+```
+
+```{r map_interactions_phases_3, fig.width = 10, fig.height=8}
+
+action_count_phase_bind_planning <- action_count_phase_bind %>% filter(p_desc == "planning")
+action_count_phase_bind_navigating <- action_count_phase_bind %>% filter(p_desc == "navigating")
+
+action_count_phase_bind_prep_mappos_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "map_position", "action_perc")
+action_count_phase_bind_prep_mappos_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "map_position", "action_perc")
+action_count_phase_bind_prep_zoom_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "zoom", "action_perc")
+action_count_phase_bind_prep_zoom_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "zoom", "action_perc")
+action_count_phase_bind_prep_search_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "search", "action_perc")
+action_count_phase_bind_prep_search_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "search", "action_perc")
+action_count_phase_bind_prep_suggcli_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "suggestion_clicked", "action_perc")
+action_count_phase_bind_prep_suggcli_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "suggestion_clicked", "action_perc")
+action_count_phase_bind_prep_poicl_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "poi_clicked", "action_perc")
+action_count_phase_bind_prep_poicl_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "poi_clicked", "action_perc")
+action_count_phase_bind_prep_poiclno_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "poi_clicked_chose_no", "action_perc")
+action_count_phase_bind_prep_poiclno_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "poi_clicked_chose_no", "action_perc")
+action_count_phase_bind_prep_bufopl_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "button_focus_player", "action_perc")
+action_count_phase_bind_prep_bufopl_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "button_focus_player", "action_perc")
+action_count_phase_bind_prep_bufollowpl_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "button_follow_player", "action_perc")
+action_count_phase_bind_prep_bufollowpl_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "button_follow_player", "action_perc")
+action_count_phase_bind_prep_setnav_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "set_navigation", "action_perc")
+action_count_phase_bind_prep_setnav_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "set_navigation", "action_perc")
+action_count_phase_bind_prep_stopnav_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "stop_navigation", "action_perc")
+action_count_phase_bind_prep_stopnav_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "stop_navigation", "action_perc")
+action_count_phase_bind_prep_setnavwrong_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "set_navigation_wrong", "action_perc")
+action_count_phase_bind_prep_setnavwrong_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "set_navigation_wrong", "action_perc")
+action_count_phase_bind_prep_bula_1 <- action_count_bind_prep_fun(action_count_phase_bind_planning, "button_last_message", "action_perc")
+action_count_phase_bind_prep_bula_2 <- action_count_bind_prep_fun(action_count_phase_bind_navigating, "button_last_message", "action_perc")
+
+
+outlier_action_logs_fun <- function(dat, base) {
+  dat %>% 
+    group_by(scenario_id) %>%
+    identify_outliers(action_perc) %>%
+    rbind(base)
+}
+
+outlier_planning_action_logs <- action_count_phase_bind_prep_mappos_1 %>% group_by(scenario_id) %>% identify_outliers(action_perc) 
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_zoom_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_search_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_suggcli_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_poiclno_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_bufopl_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_bufollowpl_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_setnav_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_stopnav_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_setnavwrong_1, outlier_planning_action_logs)
+outlier_planning_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_bula_1, outlier_planning_action_logs)
+
+outlier_navigating_action_logs <- action_count_phase_bind_prep_mappos_2 %>% group_by(scenario_id) %>% identify_outliers(action_perc) 
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_zoom_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_search_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_suggcli_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_poiclno_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_bufopl_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_bufollowpl_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_setnav_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_stopnav_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_setnavwrong_2, outlier_navigating_action_logs)
+outlier_navigating_action_logs <- outlier_action_logs_fun(action_count_phase_bind_prep_bula_2, outlier_navigating_action_logs)
+
+
+cat("\n####", "Action log: outliers", "\n")
+kable(outlier_action_logs)
+
+cat("\n")
+cat("\n####", "Action log: map panning", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_mappos_1), show.re.var = FALSE, title = "Regression model: map panning - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_mappos_2), show.re.var = FALSE, title = "Regression model: map panning - navigation phase")
+
+cat("\n####", "Action log: zooming", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_zoom_1), show.re.var = FALSE, title = "Regression model: zooming - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_zoom_2), show.re.var = FALSE, title = "Regression model: zooming - navigation phase")
+
+cat("\n####", "Action log: searching", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_search_1), show.re.var = FALSE, title = "Regression model: searching - planning phase")
+#tab_model(lme_model("action_perc", action_count_phase_bind_prep_search_2), show.re.var = FALSE, title = "Regression model: searching - navigation phase")
+
+cat("\n####", "Action log: click on suggested search item", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_suggcli_1), show.re.var = FALSE, title = "Regression model: click on suggested search item - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_suggcli_2), show.re.var = FALSE, title = "Regression model: click on suggested search item - navigation phase")
+
+cat("\n####", "Action log: click on POI", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_poicl_1), show.re.var = FALSE, title = "Regression model: click on POI - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_poicl_2), show.re.var = FALSE, title = "Regression model: click on POI - navigation phase")
+
+cat("\n####", "Action log: exit POI pop-up", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_poiclno_1), show.re.var = FALSE, title = "Regression model: exit POI pop-up - planning phase")
+#tab_model(lme_model("action_perc", action_count_phase_bind_prep_poiclno_2), show.re.var = FALSE, title = "Regression model: exit POI pop-up - navigation phase")
+
+cat("\n####", "Action log: center on location", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_bufopl_1), show.re.var = FALSE, title = "Regression model: center on location - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_bufopl_2), show.re.var = FALSE, title = "Regression model: center on location - navigation phase")
+
+cat("\n####", "Action log: follow location on navigation route", "\n")
+#tab_model(lme_model("action_perc", action_count_phase_bind_prep_bufollowpl_1), show.re.var = FALSE, title = "Regression model: follow location on navigation route - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_bufollowpl_2), show.re.var = FALSE, title = "Regression model: follow location on navigation route - navigation phase")
+
+cat("\n####", "Action log: navigate to POI", "\n")
+#tab_model(lme_model("action_perc", action_count_phase_bind_prep_setnav_1), show.re.var = FALSE, title = "Regression model: navigate to POI - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_setnav_2), show.re.var = FALSE, title = "Regression model: navigate to POI - navigation phase")
+
+cat("\n####", "Action log: stop navigation", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_stopnav_1), show.re.var = FALSE, title = "Regression model: stop navigation - planning phase")
+#tab_model(lme_model("action_perc", action_count_phase_bind_prep_stopnav_2), show.re.var = FALSE, title = "Regression model: stop navigation - navigation phase")
+
+cat("\n####", "Action log: wrongly set navigation target", "\n")
+#tab_model(lme_model("action_perc", action_count_phase_bind_prep_setnavwrong_1), show.re.var = FALSE, title = "Regression model: wrongly set navigation target - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_setnavwrong_2), show.re.var = FALSE, title = "Regression model: wrongly set navigation target - navigation phase")
+
+cat("\n####", "Action log: click on last message", "\n")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_bula_1), show.re.var = FALSE, title = "Regression model: click on last message - planning phase")
+tab_model(lme_model("action_perc", action_count_phase_bind_prep_bula_2), show.re.var = FALSE, title = "Regression model: click on last message - navigation phase")
+
+
+```
+
+
+```{r active_screen, fig.width = 10, fig.height=8}
+
+phases_screenlock_time_bind$p_desc_f <- factor(phases_screenlock_time_bind$p_desc, levels = c("planning", "navigating"), labels = c("Planning phase", "Navigation phase"))
+
+cat("\n")
+cat("\n####", "Active map screen time on task", "\n")
+phases_screenlock_time_bind %>% 
+  ggplot(aes(y = phase_perc_active, x = p_desc_f, color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5, position = position_dodge(0.9)) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, position = position_dodge(0.9), outlier.shape = 1) +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point", position = position_dodge(0.9)) +
+  labs(x = "", y = "Percent of active map screen time on task", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "right")
+
+
+cat("\n")
+cat("\n####", "Outlier -> active map time", "\n")
+kable(phases_screenlock_time_bind %>% group_by(scenario_id, p_desc) %>% identify_outliers(phase_perc_active))
+
+cat("\n")
+cat("\n####", "Active map time on task - planning phase", "\n")
+phases_screenlock_time_bind_prep_planning <- phases_screenlock_time_bind_prep %>% filter(p_desc == "planning") 
+tab_model(lme_model("phase_perc_active", phases_screenlock_time_bind_prep_planning), show.re.var = FALSE, title = "Regression model: Active map time on task - planning phase")
+
+cat("\n####", "Active map time on task - navigation phase", "\n")
+phases_screenlock_time_bind_prep_navigating <- phases_screenlock_time_bind_prep %>% filter(p_desc == "navigating") 
+tab_model(lme_model("phase_perc_active", phases_screenlock_time_bind_prep_navigating), show.re.var = FALSE, title = "Regression model: Active map time on task - navigation phase")
+
+
+```
+
+
+</br></br>
+
+
+
+### Map interaction patterns {#map_interactions_patterns}
+
+
+</br></br>
+
+```{r saa, fig.width = 13, fig.height=10, message=FALSE}
+
+cat("\n####", "Scenario 1: Non-Adapt - Low Traffic", "\n")
+seqrplot(seq_action_analysis_s1, diss = s1_dist_om, group = s1_cl_3_fac, border = NA)
+
+cat("\n")
+cat("\n####", "Scenario 2: Adapt - Low Traffic", "\n")
+seqrplot(seq_action_analysis_s2, diss = s2_dist_om, group = s2_cl_3_fac, border = NA)
+
+cat("\n")
+cat("\n####", "Scenario 3: Non-Adapt - High Traffic", "\n")
+seqrplot(seq_action_analysis_s3, diss = s3_dist_om, group = s3_cl_2_fac, border = NA)
+
+cat("\n")
+cat("\n####", "Scenario 4: Adapt - High Traffic", "\n")
+seqrplot(seq_action_analysis_s4, diss = s4_dist_om, group = s4_cl_3_fac, border = NA)
+
+```
+
+</br></br>
+
+### Task completion time & task success {#task} 
+
+
+</br></br>
+
+```{r task_time, fig.width = 13, fig.height=10}
+
+scenario_task_phase_time_bind_1 <- scenario_task_phase_time_bind %>% filter(p_desc == "planning") 
+scenario_task_phase_time_bind_prep_1 <- scenario_task_phase_time_bind_prep %>% filter(p_desc == "planning") 
+scenario_task_phase_time_bind_2 <- scenario_task_phase_time_bind %>% filter(p_desc == "navigating") 
+scenario_task_phase_time_bind_prep_2 <- scenario_task_phase_time_bind_prep %>% filter(p_desc == "navigating") 
+
+scenario_task_phase_time_bind$p_desc_f <- factor(scenario_task_phase_time_bind$p_desc, levels = c("planning", "navigating"), labels = c("Planning phase", "Navigation phase"))
+
+cat("\n####", "Time spent on task phases", "\n")
+scenario_task_phase_time_bind %>% 
+  ggplot(aes(y = phase_time, x = p_desc_f, color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5, position = position_dodge(0.9)) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, position = position_dodge(0.9), outlier.shape = 1) +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point", position = position_dodge(0.9)) +
+  #scale_x_discrete(labels=c("Planning phase", "Navigation phase")) +
+  labs(x = "", y = "Time in sec", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "right") 
+
+cat("\n####", "Outlier: Time spent on planning phase", "\n")
+kable(scenario_task_phase_time_bind_1 %>% group_by(scenario_id) %>% identify_outliers(phase_time))
+
+cat("\n####", "Outlier: Time spent on navigation phase", "\n")
+kable(scenario_task_phase_time_bind_2 %>% group_by(scenario_id) %>% identify_outliers(phase_time))
+
+cat("\n")
+cat("\n####", "Time spent on task phases in %", "\n")
+scenario_task_phase_time_bind %>% 
+  ggplot(aes(y = phase_time_perc, x = p_desc_f, color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5, position = position_dodge(0.9)) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, position = position_dodge(0.9), outlier.shape = 1) +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point", position = position_dodge(0.9)) +
+  #scale_x_discrete(labels=c("Planning phase", "Navigation phase")) +
+  labs(x = "", y = "Phase percentage", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "right") 
+
+
+cat("\n")
+cat("\n####", "Outlier: Time percentage spent on planning phase", "\n")
+kable(scenario_task_phase_time_bind_1 %>% group_by(scenario_id) %>% identify_outliers(phase_time_perc))
+
+cat("\n####", "Outlier: Time percentage spent on navigation phase", "\n")
+kable(scenario_task_phase_time_bind_2 %>% group_by(scenario_id) %>% identify_outliers(phase_time_perc))
+
+cat("\n")
+cat("\n####", "Time spent on planning phase", "\n")
+tab_model(lme_model("phase_time", scenario_task_phase_time_bind_prep_1), show.re.var = FALSE, title = "Regression model: Time spent on planning phase")
+
+cat("\n####", "Time spent on navigation phase", "\n")
+tab_model(lme_model("phase_time", scenario_task_phase_time_bind_prep_2), show.re.var = FALSE, title = "Regression model: Time spent on navigation phase")
+
+cat("\n")
+cat("\n####", "Time percentage spent on planning phase", "\n")
+tab_model(lme_model("phase_time_perc", scenario_task_phase_time_bind_prep_1), show.re.var = FALSE, title = "Regression model: Time percentage spent on planning phase")
+
+cat("\n####", "Time percentage on navigation phase", "\n")
+tab_model(lme_model("phase_time_perc", scenario_task_phase_time_bind_prep_2), show.re.var = FALSE, title = "Regression model: Time percentage spent on navigation phase")
+
+cat("\n")
+cat("\n####", "Scenario completion time", "\n")
+scenario_task_phase_time_bind %>% group_by(id, scenario_id) %>% summarise(scenario_time) %>% 
+  ggplot(aes(y = scenario_time, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5, position = position_dodge(0.9)) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, position = position_dodge(0.9), outlier.shape = 1) +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point", position = position_dodge(0.9)) +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  labs(x = "", y = "Time in sec", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "right") 
+
+cat("\n####", "Outlier: Scenario completion time", "\n")
+kable(scenario_task_phase_time_bind %>% group_by(scenario_id) %>% identify_outliers(scenario_time))
+
+cat("\n")
+cat("\n####", "Scenario completion time", "\n")
+tab_model(lme_model("scenario_time", scenario_task_phase_time_bind_prep), show.re.var = FALSE, title = "Regression model: Scenario completion time")
+
+
+```
+
+  
+  
+### Cognitive load {#cognitive_load} 
+
+
+</br></br>
+
+```{r h1_nasa_cognitive_load, fig.width = 13, fig.height=8}
+
+q2_nasa_t <- q2_nasa %>% select(c(2:9)) %>% pivot_longer(!c(scenario_id, id), names_to = "variable", values_to = "score") %>% ungroup()
+q2_nasa_t$variable_f <- factor(q2_nasa_t$variable, levels = c("nasa_mental_d", "nasa_physical_d", "nasa_temporal_d", "nasa_performance", "nasa_effort", "nasa_frustration"), labels = c("Mental demand", "Phsical demand", "Temporal demand", "Performance", "Effort", "Frustration"))
+
+q2_nasa_t %>%
+  ggplot(aes(y = score, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  facet_wrap(vars(variable_f), ncol = 3, scales = "fixed") +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  labs(x = "", y = "Self-rated perceived workload metrics (NASA TLX)", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "top")
+  
+
+cat("\n")
+cat("\n####", "Outlier: NASA mental demand", "\n")
+kable(q2_nasa_prep %>% group_by(scenario_id) %>% identify_outliers(nasa_mental_d))
+
+tab_model(lme_model("nasa_mental_d", q2_nasa_prep), show.re.var = FALSE, title = "Regression model: Mental demand")
+
+cat("\n")
+cat("\n####", "Outlier: NASA physical demand", "\n")
+kable(q2_nasa_prep %>% group_by(scenario_id) %>% identify_outliers(nasa_physical_d))
+
+tab_model(lme_model("nasa_physical_d", q2_nasa_prep), show.re.var = FALSE, title = "Regression model: Physical demand")
+
+cat("\n")
+cat("\n####", "Outlier: NASA Temporal demand", "\n")
+kable(q2_nasa_prep %>% group_by(scenario_id) %>% identify_outliers(nasa_temporal_d))
+
+tab_model(lme_model("nasa_temporal_d", q2_nasa_prep), show.re.var = FALSE, title = "Regression model: Temporal demand")
+
+cat("\n")
+cat("\n####", "Outlier: NASA Performance", "\n")
+kable(q2_nasa_prep %>% group_by(scenario_id) %>% identify_outliers(nasa_performance))
+
+tab_model(lme_model("nasa_performance", q2_nasa_prep), show.re.var = FALSE, title = "Regression model: Performance")
+
+cat("\n")
+cat("\n####", "Outlier: NASA Effort", "\n")
+kable(q2_nasa_prep %>% group_by(scenario_id) %>% identify_outliers(nasa_effort))
+
+tab_model(lme_model("nasa_effort", q2_nasa_prep), show.re.var = FALSE, title = "Regression model: Effort")
+
+cat("\n")
+cat("\n####", "Outlier: NASA Frustration", "\n")
+kable(q2_nasa_prep %>% group_by(scenario_id) %>% identify_outliers(nasa_frustration))
+
+tab_model(lme_model("nasa_frustration", q2_nasa_prep), show.re.var = FALSE, title = "Regression model: Frustration")
+
+```
+
+
+
+
+
+### Self-rated agitation
+
+
+</br></br>
+
+```{r q_sam, fig.width = 13, fig.height=8}
+
+q2_sam_t <- q2_sam %>% select(-1) %>% pivot_longer(!c(scenario_id, id), names_to = "variable", values_to = "score") %>% ungroup()
+q2_sam_t$variable_f <- factor(q2_sam_t$variable, levels = c("sam_satisfaction", "sam_agitation", "sam_control"), labels = c("Satisfaction", "Agitation", "Control"))
+
+q2_sam_t %>%
+  ggplot(aes(y = score, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  facet_wrap(vars(variable_f), ncol = 3, scales = "fixed") +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  labs(x = "", y = "Self-reported felt emotions (SAM)", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "top")
+
+
+cat("\n")
+cat("\n####", "Outlier: SAM satisfaction", "\n")
+kable(q2_sam_prep %>% group_by(scenario_id) %>% identify_outliers(sam_satisfaction))
+
+tab_model(lme_model("sam_satisfaction", q2_sam_prep), show.re.var = FALSE, title = "Regression model: Satisfaction")
+
+cat("\n")
+cat("\n####", "Outlier: SAM Agitation", "\n")
+kable(q2_sam_prep %>% group_by(scenario_id) %>% identify_outliers(sam_agitation))
+
+tab_model(lme_model("sam_agitation", q2_sam_prep), show.re.var = FALSE, title = "Regression model: Agitation")
+
+cat("\n")
+cat("\n####", "Outlier: SAM Control", "\n")
+kable(q2_sam_prep %>% group_by(scenario_id) %>% identify_outliers(sam_control))
+
+tab_model(lme_model("sam_control", q2_sam_prep), show.re.var = FALSE, title = "Regression model: Control")
+
+```
+
+</br></br>
+
+### Post-scenario perception
+
+
+
+</br></br>
+
+```{r q_scenario_perception, fig.width = 13, fig.height=8}
+
+q2_post_scenario_t_t <- q2_post_scenario_t %>% select(c(2,3,9:11)) %>% pivot_longer(!c(scenario_id, id), names_to = "variable", values_to = "score") 
+q2_post_scenario_t_t$variable_f <- factor(q2_post_scenario_t_t$variable, levels = c("difficult_tasks_num", "difficult_nav_environment_num", "helpful_map_num"), labels = c("Task completion easiness", "VR navigation easiness", "Helpfulness of map type"))
+
+q2_post_scenario_t_t %>%
+  ggplot(aes(y = score, x = as.factor(scenario_id), color = as.factor(scenario_id), fill = as.factor(scenario_id))) + 
+  geom_violin(linewidth = 0.5) +
+  geom_boxplot(width=0.1, color = "#525252", linewidth = 0.2, outlier.shape = 1) +
+  facet_wrap(vars(variable_f), ncol = 3, scales = "fixed") +
+  scale_fill_manual(values=c("#66B887", "#B8E2B3", "#B084BF", "#CEB7D9"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  scale_color_manual(values=c("#008837", "#85AF80", "#7b3294", "#9B84A6"), labels = c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt"), guide = "none") +
+  stat_summary(fun = "mean", colour = "black", size = 0.5, geom = "point") +
+  scale_x_discrete(labels=c("1: LT-Non-A", "2: LT-Adapt", "3: HT-Non-A", "4: HT-Adapt")) +
+  labs(x = "", y = "Perception of scenario", fill = "Scenarios") +
+  theme_bw() +
+  theme(text = element_text(size = 16), legend.position= "top")
+
+
+cat("\n")
+cat("\n####", "Outlier: Navigation difficulty", "\n")
+kable(q2_post_scenario_t %>% group_by(scenario_id) %>% select(-c(4:8)) %>% identify_outliers(difficult_nav_environment_num))
+
+tab_model(lme_model("difficult_nav_environment_num", q2_post_scenario_t_prep), show.re.var = FALSE, title = "Regression model: Navigation difficulty")
+
+
+cat("\n")
+cat("\n####", "Outlier: Helpfulness map", "\n")
+kable(q2_post_scenario_t %>% group_by(scenario_id) %>% select(-c(4:8)) %>% identify_outliers(helpful_map_num))
+
+tab_model(lme_model("helpful_map_num", q2_post_scenario_t_prep), show.re.var = FALSE, title = "Regression model: Helpfulness map")
+
+cat("\n")
+cat("\n####", "Outlier: Task difficulty", "\n")
+kable(q2_post_scenario_t %>% group_by(scenario_id) %>% select(-c(4:8)) %>% identify_outliers(difficult_tasks_num))
+
+tab_model(lme_model("difficult_tasks_num", q2_post_scenario_t_prep), show.re.var = FALSE, title = "Regression model: Task difficulty")
+
+```
+
+</br></br>
+
+## Hypothesis 2
+
+Adapted mobile maps used in traffic-dense environments decrease mobile map interactions and map users’ cognitive load, and thus increase task performance (i.e., decrease of task completion time and increase of task completion success).
+
+
+</br></br>
+
+### Map interactions
+
+
+Based on results in  [section 2.1.3](#map_interactions) 
+
+
+
+</br></br>
+
+### Cognitive load
+
+Based on results in  [section 2.1.1](#cognitive_load) 
+
+
+
+</br></br>
+
+### Task completion time & task success
+
+Based on results in [section 2.1.4](#task) 
+
+

@@ -1,0 +1,281 @@
+---
+title: "trajectory_analysis_plot"
+output: html_document
+date: "2024-01-01"
+---
+
+## Plot analysis:
+
+#Mean Total Length for Each Scenario
+
+```{r, echo=FALSE, warning=FALSE}
+# Install and load necessary packages
+library(ggplot2)
+
+# Read the CSV file
+data_trajectory <- read.csv("trajectory_analysis.csv")
+
+# Calculate the mean total_length for each scenario
+mean_data <- aggregate(total_length ~ scenario, data = data_trajectory, mean, na.rm = TRUE)
+
+# Map scenario labels
+mean_data$scenario_label <- factor(mean_data$scenario, levels = c(1, 2, 3, 4),
+                                   labels = c("LT-Non-A", "LT-Adapt", "HT-Non-A", "HT-Adapt"))
+
+# Define color mapping
+# Define color mapping using hexadecimal color codes
+scenario_colors <- c("LT-Non-A" = "#008837",  # Dark Green
+                     "LT-Adapt" = "#a6dba0",  # Light Green
+                     "HT-Non-A" = "#7b3294",  # Dark Slate Blue
+                     "HT-Adapt" = "#c2a5cf")  # Lavender
+
+# Create a ggplot with mean total_length for each scenario
+plot <- ggplot(mean_data, aes(x = scenario_label, y = total_length, fill = scenario_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = round(total_length, 2)), vjust = -0.5, size = 3, color = "black") +  # Add labels on top
+  labs(title = "Mean Total Length for Each Scenario",
+       x = "Scenario",
+       y = "Mean Total Length") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Show the plot
+print(plot)
+
+```
+
+#Mean Total Time for Each Scenario
+
+```{r, echo=FALSE, warning=FALSE}
+# Install and load necessary packages
+library(ggplot2)
+
+# Read the CSV file
+data_trajectory <- read.csv("trajectory_analysis.csv")
+
+# Calculate the mean total_length for each scenario
+mean_data <- aggregate(total_duration ~ scenario, data = data_trajectory, mean, na.rm = TRUE)
+
+# Map scenario labels
+mean_data$scenario_label <- factor(mean_data$scenario, levels = c(1, 2, 3, 4),
+                                   labels = c("LT-Non-A", "LT-Adapt", "HT-Non-A", "HT-Adapt"))
+
+# Define color mapping
+# Define color mapping using hexadecimal color codes
+scenario_colors <- c("LT-Non-A" = "#008837",  # Dark Green
+                     "LT-Adapt" = "#a6dba0",  # Light Green
+                     "HT-Non-A" = "#7b3294",  # Dark Slate Blue
+                     "HT-Adapt" = "#c2a5cf")  # Lavender
+
+# Create a ggplot with mean total_length for each scenario
+plot <- ggplot(mean_data, aes(x = scenario_label, y = total_duration, fill = scenario_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = round(total_duration, 2)), vjust = -0.5, size = 3, color = "black") +  # Add labels on top
+  labs(title = "Mean Total Duration for Each Scenario",
+       x = "Scenario",
+       y = "Mean Total Duration(seconds)") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Show the plot
+print(plot)
+
+```
+
+#Speed for Each Scenario
+
+```{r, echo=FALSE, warning=FALSE}
+# Install and load necessary packages
+library(ggplot2)
+
+# Read the CSV file
+data_trajectory <- read.csv("trajectory_analysis.csv")
+
+# Calculate the sum total_length and sum total_duration for each scenario
+sum_data <- aggregate(cbind(total_length, total_duration) ~ scenario, data = data_trajectory, sum, na.rm = TRUE)
+
+# Calculate average speed (sum length / sum duration)
+sum_data$average_speed <- sum_data$total_length / sum_data$total_duration
+
+# Map scenario labels
+sum_data$scenario_label <- factor(sum_data$scenario, levels = c(1, 2, 3, 4),
+                                   labels = c("LT-Non-A", "LT-Adapt", "HT-Non-A", "HT-Adapt"))
+
+# Define color mapping using hexadecimal color codes
+scenario_colors <- c("LT-Non-A" = "#008837",  # Dark Green
+                     "LT-Adapt" = "#a6dba0",  # Light Green
+                     "HT-Non-A" = "#7b3294",  # Dark Slate Blue
+                     "HT-Adapt" = "#c2a5cf")  # Lavender
+
+# Create a ggplot with average speed for each scenario
+plot_speed <- ggplot(sum_data, aes(x = scenario_label, y = average_speed, fill = scenario_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = round(average_speed, 2)), vjust = -0.5, size = 3, color = "black") +  # Add labels on top
+  labs(title = "Average Speed for Each Scenario",
+       x = "Scenario",
+       y = "Average Speed") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Show the speed plot
+print(plot_speed)
+
+```
+
+#Mean number of walkingstops for Each Scenario
+
+```{r, echo=FALSE, warning=FALSE}
+# Install and load necessary packages
+library(ggplot2)
+
+# Read the CSV file
+data_trajectory <- read.csv("trajectory_analysis.csv")
+
+# Calculate the sum total_walkingstops for each scenario
+sum_walkingstops <- aggregate(total_walkingstops ~ scenario, data = data_trajectory, sum, na.rm = TRUE)
+
+# Calculate average number of total_walkingstops
+sum_walkingstops$average_walkingstops <- sum_walkingstops$total_walkingstops /                                           length(unique(data_trajectory$participantno[data_trajectory$scenario %in% sum_walkingstops$scenario]))
+
+
+# Map scenario labels
+sum_walkingstops$scenario_label <- factor(sum_walkingstops$scenario, levels = c(1, 2, 3, 4),
+                                           labels = c("LT-Non-A", "LT-Adapt", "HT-Non-A", "HT-Adapt"))
+
+# Define color mapping using hexadecimal color codes
+scenario_colors <- c("LT-Non-A" = "#008837",  # Dark Green
+                     "LT-Adapt" = "#a6dba0",  # Light Green
+                     "HT-Non-A" = "#7b3294",  # Dark Slate Blue
+                     "HT-Adapt" = "#c2a5cf")  # Lavender
+
+# Create a ggplot with average number of total_walkingstops for each scenario
+plot_walkingstops <- ggplot(sum_walkingstops, aes(x = scenario_label, y = average_walkingstops, fill = scenario_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = round(average_walkingstops, 2)), vjust = -0.5, size = 3, color = "black") +  # Add labels on top
+  labs(title = "Average Number of Total Walking Stops for Each Scenario",
+       x = "Scenario",
+       y = "Average Walking Stops") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Show the walking stops plot
+print(plot_walkingstops)
+
+```
+
+#Mean number of walkingstop_duration for Each Scenario
+
+```{r, echo=FALSE, warning=FALSE}
+# Install and load necessary packages
+library(ggplot2)
+
+# Read the CSV file
+data_trajectory <- read.csv("trajectory_analysis.csv")
+
+# Calculate the sum total_walkingstop_duration for each scenario
+sum_walkingstop_duration <- aggregate(total_walkingstop_duration ~ scenario, data = data_trajectory, sum, na.rm = TRUE)
+
+# Calculate average number of total_walkingstop_duration
+sum_walkingstop_duration$average_walkingstop_duration <- sum_walkingstop_duration$total_walkingstop_duration / 
+                                                         length(unique(data_trajectory$participantno[data_trajectory$scenario %in% sum_walkingstop_duration$scenario]))
+
+# Map scenario labels
+sum_walkingstop_duration$scenario_label <- factor(sum_walkingstop_duration$scenario, levels = c(1, 2, 3, 4),
+                                                  labels = c("LT-Non-A", "LT-Adapt", "HT-Non-A", "HT-Adapt"))
+
+# Define color mapping using hexadecimal color codes
+scenario_colors <- c("LT-Non-A" = "#008837",  # Dark Green
+                     "LT-Adapt" = "#a6dba0",  # Light Green
+                     "HT-Non-A" = "#7b3294",  # Dark Slate Blue
+                     "HT-Adapt" = "#c2a5cf")  # Lavender
+
+# Create a ggplot with average number of total_walkingstop_duration for each scenario
+plot_walkingstop_duration <- ggplot(sum_walkingstop_duration, aes(x = scenario_label, y = average_walkingstop_duration, fill = scenario_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = round(average_walkingstop_duration, 2)), vjust = -0.5, size = 3, color = "black") +  # Add labels on top
+  labs(title = "Average Walking Stop Duration for Each Scenario",
+       x = "Scenario",
+       y = "Average Walking Stop Duration") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Show the walking stop duration plot
+print(plot_walkingstop_duration)
+
+```
+
+#Boxplots for variables
+
+```{r echo=FALSE, warning=FALSE}
+# Install and load necessary packages
+library(ggplot2)
+
+# Read the CSV file
+data_trajectory <- read.csv("trajectory_analysis.csv")
+
+# Map scenario labels
+data_trajectory$scenario_label <- factor(data_trajectory$scenario, levels = c(1, 2, 3, 4),
+                                         labels = c("LT-Non-A", "LT-Adapt", "HT-Non-A", "HT-Adapt"))
+
+# Define color mapping using hexadecimal color codes
+scenario_colors <- c("LT-Non-A" = "#008837",  # Dark Green
+                     "LT-Adapt" = "#a6dba0",  # Light Green
+                     "HT-Non-A" = "#7b3294",  # Dark Slate Blue
+                     "HT-Adapt" = "#c2a5cf")  # Lavender
+
+# Create a ggplot with boxplots for each variable grouped by scenario
+plot_total_length <- ggplot(data_trajectory, aes(x = scenario_label, y = total_length, fill = scenario_label)) +
+  geom_boxplot() +
+  labs(title = "Boxplots of Total Length Grouped by Scenario",
+       x = "Scenario",
+       y = "Total Length") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Similarly, you can create boxplots for other variables (total_duration, total_speed, total_walkingstops, total_walkingstop_duration) using the same structure.
+
+# Create a ggplot with boxplots for total_duration grouped by scenario
+plot_total_duration <- ggplot(data_trajectory, aes(x = scenario_label, y = total_duration, fill = scenario_label)) +
+  geom_boxplot() +
+  labs(title = "Boxplots of total_duration Grouped by Scenario",
+       x = "Scenario",
+       y = "total_duration") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Create a ggplot with boxplots for total_speed grouped by scenario
+plot_total_speed <- ggplot(data_trajectory, aes(x = scenario_label, y = total_speed, fill = scenario_label)) +
+  geom_boxplot() +
+  labs(title = "Boxplots of total_speed Grouped by Scenario",
+       x = "Scenario",
+       y = "total_speed") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Create a ggplot with boxplots for total_walkingstops grouped by scenario
+plot_total_walkingstops <- ggplot(data_trajectory, aes(x = scenario_label, y = total_walkingstops, fill = scenario_label)) +
+  geom_boxplot() +
+  labs(title = "Boxplots of total_walkingstops Grouped by Scenario",
+       x = "Scenario",
+       y = "total_walkingstops") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+# Create a ggplot with boxplots for total_walkingstop_duration grouped by scenario
+plot_total_walkingstop_duration <- ggplot(data_trajectory, aes(x = scenario_label, y = total_walkingstop_duration, fill = scenario_label)) +
+  geom_boxplot() +
+  labs(title = "Boxplots of total_walkingstop_duration Grouped by Scenario",
+       x = "Scenario",
+       y = "total_walkingstop_duration") +
+  scale_fill_manual(values = scenario_colors, name = "Scenario") +
+  theme_minimal()
+
+
+
+# Show the boxplot for total length
+print(plot_total_length)
+print(plot_total_duration)
+print(plot_total_speed)
+print(plot_total_walkingstops)
+print(plot_total_walkingstop_duration)
+```
