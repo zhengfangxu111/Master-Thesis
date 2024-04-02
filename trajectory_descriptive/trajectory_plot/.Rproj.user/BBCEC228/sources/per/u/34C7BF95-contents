@@ -1,0 +1,123 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-01-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Center.x = -594.0938 Center.z = -936.8522
+
+BottomLeft.x = -1349.39 BottomLeft.z = -1655.76 (get from unity groundMap object)
+
+```{r cars}
+# Install and load necessary packages
+library(png)
+library(ggplot2)
+
+# Read the PNG image
+img <- readPNG("map_vector_v3_icons.png")
+
+# Get image dimensions
+img_width <- ncol(img)
+img_height <- nrow(img)
+
+# Define center and bottom-left coordinates
+center <- c(x = -594.0938, z = -936.8522)
+bottom_left <- c(x = -1349.39, z = -1655.76)
+
+# Create a data frame with points to be plotted
+points <- data.frame(
+  x = c(-100, 0, 100),  # Replace with your actual x-coordinates
+  z = c(-100, 0, 100)   # Replace with your actual z-coordinates
+)
+
+# Calculate the relative coordinates based on the center and bottom-left points
+points$rel_x <- points$x + center["x"]
+points$rel_z <- points$z + center["z"]
+
+# Calculate bounding box coordinates
+bbox <- data.frame(
+  x = c(bottom_left["x"], bottom_left["x"] + img_width, bottom_left["x"] + img_width, bottom_left["x"], bottom_left["x"]),
+  z = c(bottom_left["z"], bottom_left["z"], bottom_left["z"] + img_height, bottom_left["z"] + img_height, bottom_left["z"])
+)
+
+# Plot the points and bounding box on the image
+ggplot() +
+  geom_raster(data = data.frame(x = rep(1:img_width, each = img_height), y = rep(1:img_height, times = img_width)), aes(x = x, y = y), interpolate = TRUE, alpha = 0.5) +
+  geom_point(data = points, aes(x = rel_x, y = rel_z), color = "red", size = 3) +
+  geom_point(data = data.frame(x = center["x"], z = center["z"]), aes(x = center["x"], y = center["z"]), color = "blue", size = 5, shape = 2) +
+  geom_point(data = data.frame(x = bottom_left["x"], z = bottom_left["z"]), aes(x = bottom_left["x"], y = bottom_left["z"]), color = "green", size = 5, shape = 3) +
+  geom_polygon(data = bbox, aes(x = x, y = z), fill = NA, color = "purple", size = 2) +
+  labs(x = "X-axis", y = "Z-axis", title = "Coordinate Reference System with Bounding Box") +
+  theme_minimal()
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+\<- rea
+
+```{r pressure, echo=FALSE}
+# Load required libraries
+library(png)
+
+# Read the PNG image
+img <- readPNG("map_vector_v3_icons.png")
+
+# Your points' positions (X, Z)
+points <- data.frame(X = c(100, 200, 300),
+                     Z = c(150, 300, 450))  # Add your actual points here
+
+# Plot the image
+plot(1, type = "n", xlab = "", ylab = "", xlim = c(0, ncol(img)), ylim = c(0, nrow(img)))
+rasterImage(img, 0, 0, ncol(img), nrow(img))
+
+# Plot points on the image
+points(points$X, points$Z, col = "red", pch = 16)
+
+# Add labels or annotations if needed
+text(points$X, points$Z, labels = 1:nrow(points), pos = 3, offset = 0.5, col = "white")
+
+# Add a legend if needed
+legend("bottomleft", legend = "Points", col = "red", pch = 16)
+
+# Display the plot
+
+```
+
+Center.x = -594.0938 Center.z = -936.8522
+
+BottomLeft.x = -1349.39 BottomLeft.z = -1655.76 (get from unity groundMap object)
+
+```{r}
+library(png)
+library(ggplot2)
+
+img <- readPNG("map_vector_v3_icons.png")
+
+points <- data.frame(X = c(-1260.3, -1261.3),
+                     Z = c(-937.0044, -938.0044))
+
+# Calculate the bounding box
+x_min <- -1349.39
+x_max <- 161.2024
+z_min <- -1655.76
+z_max <- -217.9444
+
+# Plot points
+ggplot() +
+  annotation_raster(img, xmin = x_min, xmax = x_max, ymin = z_min, ymax = z_max) +
+  geom_point(data = points, aes(x = X, y = Z), color = "red", size = 3) +
+  labs(x = "X", y = "Z") +  theme_minimal()
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
