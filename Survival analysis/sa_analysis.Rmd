@@ -1,0 +1,949 @@
+---
+title: "sa"
+output: html_document
+date: "2024-06-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library('survival')
+library('survminer')
+
+df <- read.csv('result_indi_env_interaction.csv')
+
+
+```
+
+Box plot to know the data distribution:
+
+```{r}
+# Plot box plot using ggplot2
+# Calculate summary statistics
+Q1 <- quantile(df$total_inactive_time, 0.25)
+Q3 <- quantile(df$total_inactive_time, 0.75)
+median <- median(df$total_inactive_time)
+mean <- mean(df$total_inactive_time)
+
+# Plot box plot with ggplot2 and add text annotations
+ggplot(df, aes(y = total_inactive_time)) +
+  geom_boxplot(fill = "lightblue", color = "blue") +
+  labs(title = "Inactive Duration Distribution (3117 phase)", 
+       y = "Inactive Time") +
+  coord_cartesian(ylim = c(0, 50), xlim = c(-0.4, 0.6)) +  # Adjust limits based on your data
+  geom_text(aes(x = 0.4, y = Q1, label = paste("Q1 =", round(Q1, 2))), color = "black", hjust = 0) +
+  geom_text(aes(x = 0.4, y = Q3, label = paste("Q3 =", round(Q3, 2))), color = "black", hjust = 0) +
+  geom_text(aes(x = 0.4, y = median, label = paste("Median =", round(median, 2))), color = "black", hjust = 0) +
+  geom_text(aes(x = 0.4, y = mean, label = paste("Mean =", round(mean, 2))), color = "red", hjust = 0)
+
+
+```
+
+See correlation coefficient
+
+```{r}
+# Calculate correlation matrix
+correlation_matrix <- cor(df[,-c(1,2,3,4,7)])
+print(correlation_matrix)
+# Install and load the corrplot package
+install.packages("corrplot")
+library(corrplot)
+
+# Plot the correlation matrix
+corrplot(correlation_matrix, method = "circle")
+
+```
+
+Linear regression: Find coefficient, qq plot, AIC, predicted value vs observed value, interpret coefficient:
+
+```{r}
+# simplt linear regression
+
+# Fit the linear model
+linear_model <- lm(total_inactive_time ~ . , data = df[,-c(1,2,3,4)])
+
+# Summarize the model
+summary(linear_model)
+
+# Calculate AIC
+model_aic <- AIC(linear_model)
+
+# Print the AIC value
+print(model_aic)
+
+
+# Plot diagnostic plots
+par(mfrow=c(2,2)) # Set up the plotting area
+plot(linear_model)
+
+```
+
+```{r}
+
+```
+
+```{r}
+# Extract residuals from the model
+residuals <- residuals(linear_model)
+
+# Plot histogram of residuals
+hist(residuals, main="Histogram of Residuals", xlab="Residuals", col="lightblue", border="black")
+
+# Alternatively, using ggplot2 for a more customizable plot
+ggplot(data.frame(residuals), aes(x=residuals)) +
+  geom_histogram(binwidth=0.5, fill="lightblue", color="black") +
+  labs(title="Histogram of Residuals", x="Residuals", y="Frequency") +
+  theme_minimal()
+
+# Create the Q-Q plot
+qqnorm(residuals, main="Q-Q Plot of Residuals")
+qqline(residuals, col="red")
+```
+
+```{r}
+# obeserved ones vs predicted ones
+# Generate predictions from the linear model
+df$predicted_values_linear <- predict(linear_model, newdata = df)
+# Scatter plot of observed vs predicted values
+# Load necessary library
+library(ggplot2)
+
+# Create a scatter plot using ggplot2
+ggplot(df, aes(x = total_inactive_time, y = predicted_values_linear)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Observed vs Predicted Values", x = "Observed Values", y = "Predicted Values") +
+  theme_minimal()
+
+
+```
+
+Linear mixed model:
+
+```{r}
+# Install required package if not already installed
+# Load the lme4 library
+library(lme4)
+
+# Assuming df is your data frame with all necessary columns
+# Example:
+# df <- read.csv('your_data.csv')
+
+# Define the formula for the mixed linear model
+formula <- total_inactive_time ~ traffic_density + sbsod_score + age + mobile_map_freq_num + ifcross_preactive + ifcross_inactive + completion_rate + if_follow + (1 | participant)
+
+# Fit the mixed linear model
+model <- lmer(formula, data = df)
+
+# Print the summary of the model
+summary(model)
+
+```
+
+survival aft model :
+
+```{r}
+# Create a survival object
+surv_obj <- Surv(time = df$total_inactive_time, event = df$state)
+
+#AFT model
+model.exp <- survreg(surv_obj ~  . , data = df[,-c(1,2,3,4,7,8)], dist = 'exp')
+model.wei <- survreg(surv_obj ~ . , data = df[,-c(1,2,3,4,7,8)], dist = 'weib')
+model.logn <- survreg(surv_obj ~ . , data = df[,-c(1,2,3,4,7,8)], dist = 'logn')
+model.logl <- survreg(surv_obj ~ . , data = df[,-c(1,2,3,4,7,8)], dist = 'logl')
+```
+
+```{r}
+AIC(model.exp, model.wei, model.logn, model.logl)
+summary(model.logn)
+# 绘制残差图
+# 提取残差
+residuals_df <- residuals(model.logl, type = "deviance")
+
+# 绘制残差直方图
+hist(residuals_df, main = "Residuals Histogram", xlab = "Residuals", breaks = 10)
+
+# QQ图
+qqnorm(residuals_df)
+qqline(residuals_df, col = "red")
+
+```
+
+```{r}
+# obeserved ones vs predicted ones
+# Generate predictions from the linear model
+df$predicted_values_aft <- predict(model.logn, type = "quantile", p = 0.5)
+# Scatter plot of observed vs predicted values
+# Load necessary library
+library(ggplot2)
+
+# Create a scatter plot using ggplot2
+ggplot(df, aes(x = total_inactive_time, y = predicted_values_aft)) +
+  geom_point(color = "blue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Observed vs Predicted Values", x = "Observed Values", y = "Predicted Values") +
+  theme_minimal()
+```
+
+R squared
+
+```{r}
+# 提取预测值
+y_pred_aft <- predict(model.logn, type = "quantile", p = 0.5)
+y_pred_lm <- predict(linear_model)
+
+# 计算实际值
+y_observed <- df$total_inactive_time
+
+# 计算 R^2 和调整后的 R^2
+calculate_r_squared <- function(y_observed, y_predicted, model) {
+  tss <- sum((y_observed - mean(y_observed))^2)
+  rss <- sum((y_observed - y_predicted)^2)
+  r_squared <- 1 - (rss / tss)
+  
+  n <- length(y_observed)
+  p <- length(coefficients(model)) - 1
+  r_squared_adj <- 1 - ((1 - r_squared) * (n - 1) / (n - p - 1))
+  
+  return(list(r_squared = r_squared, r_squared_adj = r_squared_adj))
+}
+
+# AFT 模型的 R^2 和调整后的 R^2
+aft_r_squared <- calculate_r_squared(y_observed, y_pred_aft, model.logn)
+cat("AFT Model R^2: ", aft_r_squared$r_squared, "\n")
+cat("AFT Model Adjusted R^2: ", aft_r_squared$r_squared_adj, "\n")
+
+# 线性回归模型的 R^2 和调整后的 R^2
+lm_r_squared <- calculate_r_squared(y_observed, y_pred_lm, linear_model)
+cat("Linear Regression R^2: ", lm_r_squared$r_squared, "\n")
+cat("Linear Regression Adjusted R^2: ", lm_r_squared$r_squared_adj, "\n")
+
+
+```
+
+```{r}
+# compare the fitted survival functions from an Accelerated Failure Time (AFT)
+# Generate a sequence of quantiles to predict
+quantiles <- seq(0, 1, by = 0.01)
+
+# Predict survival times for each quantile
+predicted_times <- predict(model.logl, type = "quantile", p = quantiles, se = TRUE)
+
+# Extract the fitted survival times
+fitted_survival_times <- data.frame(
+  quantiles = rep(quantiles, each = nrow(df)),
+  predicted_times = as.vector(predicted_times$fit)
+)
+
+# Calculate the fitted survival probabilities
+fitted_survival_times$fitted_survival <- 1 - fitted_survival_times$quantiles
+
+
+# Compute the observed survival function using Kaplan-Meier estimation
+km_fit <- survfit(surv_obj ~ 1, data = df)
+
+# Extract the observed survival times and probabilities
+observed_survival_times <- data.frame(
+  time = km_fit$time,
+  observed_survival = km_fit$surv
+)
+
+# Load necessary library
+library(ggplot2)
+
+# Plot the observed and fitted survival functions
+ggplot() +
+  geom_step(data = observed_survival_times, aes(x = time, y = observed_survival), color = "blue", linetype = "dashed", linewidth = 1) +
+  geom_line(data = fitted_survival_times, aes(x = predicted_times, y = fitted_survival), color = "red", linewidth = 1) +
+  labs(title = "Observed vs Fitted Survival Functions", x = "Time", y = "Survival Probability") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1)) +
+  scale_x_continuous(limits = c(0, max(observed_survival_times$time, na.rm = TRUE)))
+
+
+
+```
+
+cox
+
+```{r}
+library(survival)
+surv_obj <- Surv(time = df$total_inactive_time, event = df$state)
+
+
+# 拟合Cox比例风险模型
+cox_model <- coxph(surv_obj ~ ., data = df[, -c(1, 2, 3, 4, 7, 8, 10, 13, 6)])
+
+# 查看模型摘要
+summary(cox_model)
+
+```
+
+Random Survival Forests
+
+```{r}
+library(randomForest)
+
+
+# 随机森林回归模型
+rf_model <- randomForest(total_inactive_time ~ ., data = df[, -c(1, 2, 3, 4, 8, 10, 13, 6)])
+
+# 查看模型摘要
+print(rf_model)
+
+# 预测值
+predicted_values_rf <- predict(rf_model, newdata = df)
+
+# 绘制观察值 vs 预测值
+plot(df$total_inactive_time, predicted_values_rf,
+     xlab = "Observed Total Inactive Time", ylab = "Predicted Total Inactive Time",
+     main = "Observed vs Predicted Total Inactive Time (Random Forest)",
+     pch = 19, col = "blue")
+
+# 添加参考线
+abline(a = 0, b = 1, col = "red")
+
+# 预测值
+predicted_values_rf <- predict(rf_model, newdata = df)
+
+# 计算 R^2
+actual_values <- df$total_inactive_time
+ss_total <- sum((actual_values - mean(actual_values))^2)
+ss_residual <- sum((actual_values - predicted_values_rf)^2)
+r_squared_rf <- 1 - (ss_residual / ss_total)
+
+# 输出 R^2
+print(r_squared_rf)
+
+
+```
+
+```{r}
+
+# Predict on training data
+predictions <- predict(rf_model, newdata = df[, -c(1, 2, 3, 4, 7, 8, 10, 13, 6)])
+
+# Calculate performance metrics
+mse <- mean((df$total_inactive_time - predictions)^2)
+rmse <- sqrt(mse)
+mae <- mean(abs(df$total_inactive_time - predictions))
+r_squared <- 1 - sum((df$total_inactive_time - predictions)^2) / sum((df$total_inactive_time - mean(df$total_inactive_time))^2)
+
+# Print metrics
+cat("MSE:", mse, "\n")
+cat("RMSE:", rmse, "\n")
+cat("MAE:", mae, "\n")
+cat("R-squared:", r_squared, "\n")
+
+
+```
+
+result plot
+
+```{r}
+# Create a new data frame for prediction
+newdata <- data.frame(
+  # Assume the covariates in the model are named as below
+  traffic_density = 0,  # Example value
+  map_type = 1,           # Example value
+  sbsod_score = 3,        # Example value
+  gender = 0,             # Example value
+  age = 0,                # Specific value for age
+  mobile_map_freq_num = 1, # Specific value for mobile map frequency
+  is_shortcut = 1,        # Example value
+  ifcross_preactive = 0, # Example value
+  completion_rate = ,  # Example value
+  if_pan = 1,             # Example value
+  if_zoom = 1,            # Example value
+  if_selflocation = 1,    # Example value
+  if_follow = 1,
+  
+  ifcross_inactive = 0
+)
+
+# Predict survival times for the new data
+pred_surv <- predict(model.logn, newdata = newdata, type = "quantile", p = seq(0.01, 0.99, by = 0.01))
+
+```
+
+```{r}
+# Load necessary library for plotting
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Time = rep(seq(0.01, 0.99, by = 0.01), 2),
+  Survival_Probability = c(1 - seq(0.01, 0.99, by = 0.01), 1 - seq(0.01, 0.99, by = 0.01)),
+  ifcross_inactive = rep(c("0", "1"), each = 99),
+  Survival_Time = c(pred_surv[1,], pred_surv[2,])
+)
+
+# Plot the survival curves
+ggplot(plot_data, aes(x = Survival_Time, y = Survival_Probability, color = ifcross_inactive)) +
+  geom_line() +
+  labs(title = "Survival Curves Comparison",
+       x = "Time",
+       y = "Survival Probability",
+       color = "ifcross_inactive") +
+  xlim(0, 50) +  # Set x-axis limits from 0 to 50
+  theme_minimal()
+
+```
+
+```{r}
+# Create a new data frame for prediction
+newdata <- data.frame(
+  # Assume the covariates in the model are named as below
+  traffic_density = mean(df$traffic_density),
+  map_type = mean(df$map_type),
+  sbsod_score = mean(df$sbsod_score),
+  gender = mean(df$gender),
+  age = mean(df$age),
+  is_shortcut = mean(df$is_shortcut),
+  ifcross_preactive = mean(df$ifcross_preactive),
+  completion_rate = mean(df$completion_rate),
+  if_pan = mean(df$if_pan),
+  if_zoom = mean(df$if_zoom),
+  if_selflocation = mean(df$if_selflocation),
+  if_follow = mean(df$if_follow),
+  ifcross_inactive = mean(df$ifcross_inactive),
+  
+  mobile_map_freq_num = c(1, 2, 3 )
+)
+
+# Predict survival times for the new data
+pred_surv <- predict(model.logn, newdata = newdata, type = "quantile", p = seq(0.01, 0.99, by = 0.01))
+# Convert the predictions to a data frame for easier handling
+pred_surv_df <- as.data.frame(pred_surv)
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Time = rep(seq(0.01, 0.99, by = 0.01), times = 3),
+  Survival_Probability = rep(1 - seq(0.01, 0.99, by = 0.01), times = 3),
+  mobile_map_freq_num = factor(rep(c(1, 2, 3), each = 99)),
+  Survival_Time = as.vector(t(pred_surv_df))
+)
+ggplot(plot_data, aes(x = Survival_Time, y = Survival_Probability, color = mobile_map_freq_num)) +
+  geom_line() +
+  labs(title = "Survival Curves Comparison for Different Levels of mobile_map_freq_num",
+       x = "Time",
+       y = "Survival Probability",
+       color = "Mobile Map Frequency") +
+   xlim(0, 50) +
+  theme_minimal()
+```
+
+completion rate
+
+```{r}
+# Define the age groups and map use groups
+combinations <- data.frame(
+  age = c(0, 2),
+  mobile_map_freq_num = c(1, 3)
+)
+
+# Create a data frame for prediction
+newdata <- expand.grid(
+  traffic_density = mean(df$traffic_density),
+  map_type = mean(df$map_type),
+  sbsod_score = mean(df$sbsod_score),
+  gender = mean(df$gender),
+  age = combinations$age,  # Different age groups
+  mobile_map_freq_num = combinations$mobile_map_freq_num,
+  is_shortcut = mean(df$is_shortcut),
+  ifcross_preactive = mean(df$ifcross_preactive),
+  completion_rate = mean(df$completion_rate),
+  if_pan = mean(df$if_pan),
+  if_zoom = mean(df$if_zoom),
+  if_selflocation = mean(df$if_selflocation),
+  if_follow = mean(df$if_follow),
+  ifcross_inactive = mean(df$ifcross_inactive),
+  map_use_group = map_use_groups  # Different map use groups
+)
+
+# Define quantiles for prediction
+quantiles <- seq(0.01, 0.99, by = 0.01)
+
+# Initialize a list to store predictions
+pred_surv_list <- list()
+
+# Predict survival times for each combination of age and mobile_map_freq_num
+for (i in 1:nrow(combinations)) {
+  temp_data <- newdata[i, , drop = FALSE]
+  
+  # Predict survival times
+  pred_surv <- predict(model.logn, newdata = temp_data, type = "quantile", p = quantiles)
+  
+  # Ensure that pred_surv length matches quantiles length
+  if(length(pred_surv) != length(quantiles)) {
+    stop(paste("Length of predictions does not match number of quantiles for Age", combinations$age[i], "and Mobile Map Frequency", combinations$mobile_map_freq_num[i]))
+  }
+  
+  # Store predictions in the list
+  pred_surv_list[[paste("Age", combinations$age[i], "Map", combinations$mobile_map_freq_num[i])]] <- data.frame(
+    Age = rep(combinations$age[i], length(quantiles)),
+    Mobile_Map_Freq_Num = rep(combinations$mobile_map_freq_num[i], length(quantiles)),
+    Survival_Time = pred_surv,
+    Survival_Probability = 1 - quantiles
+  )
+}
+
+# Combine the list into a single data frame
+plot_data <- do.call(rbind, pred_surv_list)
+
+
+
+
+# Plot the survival curves
+
+# Plot the survival curves
+ggplot(plot_data, aes(x = Survival_Time, y = Survival_Probability, color = interaction(Age, Mobile_Map_Freq_Num))) +
+  geom_line() +
+  labs(title = "Survival Curves by Age and Mobile Map Frequency",
+       x = "Survival Time",
+       y = "Survival Probability",
+       color = "Age & Mobile Map Frequency") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+# Create a survival object from your data
+surv_obj <- Surv(df$total_inactive_time, df$state)  # Adjust column names as necessary
+
+# Fit the Kaplan-Meier survival curve
+km_fit <- survfit(surv_obj ~ 1, data = df)
+
+# Define quantiles for prediction
+quantiles <- seq(0.01, 0.99, by = 0.01)
+
+# Predict survival times using the mean values for covariates
+newdata <- data.frame(
+  traffic_density = mean(df$traffic_density),
+  map_type = mean(df$map_type),
+  sbsod_score = mean(df$sbsod_score),
+  gender = mean(df$gender),
+  age = mean(df$age),
+  mobile_map_freq_num = mean(df$mobile_map_freq_num),
+  is_shortcut = mean(df$is_shortcut),
+  ifcross_preactive = mean(df$ifcross_preactive),
+  completion_rate = mean(df$completion_rate),
+  if_pan = mean(df$if_pan),
+  if_zoom = mean(df$if_zoom),
+  if_selflocation = mean(df$if_selflocation),
+  if_follow = mean(df$if_follow),
+  ifcross_inactive = mean(df$ifcross_inactive)
+)
+
+# Predict survival times for the defined quantiles
+pred_surv <- predict(model.logn, newdata = newdata, type = "quantile", p = quantiles)
+
+# Create a data frame for the fitted survival curve
+fitted_data <- data.frame(
+  Survival_Time = pred_surv,
+  Survival_Probability = 1 - quantiles
+)
+
+
+# Extract the observed survival times and probabilities from the Kaplan-Meier fit
+observed_data <- data.frame(
+  Survival_Time = km_fit$time,
+  Survival_Probability = km_fit$surv
+)
+
+# Combine observed and fitted data
+observed_data$Type <- "Observed"
+fitted_data$Type <- "Fitted"
+plot_data <- rbind(observed_data, fitted_data)
+
+# Load ggplot2 library
+library(ggplot2)
+
+# Plot the survival curves
+ggplot(plot_data, aes(x = Survival_Time, y = Survival_Probability, color = Type)) +
+  geom_step(data = observed_data, aes(x = Survival_Time, y = Survival_Probability, color = "Observed")) +
+  geom_line(data = fitted_data, aes(x = Survival_Time, y = Survival_Probability, color = "Fitted")) +
+  labs(title = "Observed vs Fitted Survival Curves",
+       x = "Survival Time",
+       y = "Survival Probability",
+       color = "Type") +
+  theme_minimal() +
+  xlim(0, 30)  +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+# Define the specific covariate values
+specific_covariates <- data.frame(
+  traffic_density = 0,  # Example value
+  map_type = 1,           # Example value
+  sbsod_score = 3,        # Example value
+  gender = 0,             # Example value
+  age = 0,                # Specific value for age
+  mobile_map_freq_num = 1, # Specific value for mobile map frequency
+  is_shortcut = 1,        # Example value
+  ifcross_preactive = 0, # Example value
+  completion_rate = 0.8,  # Example value
+  if_pan = 1,             # Example value
+  if_zoom = 1,            # Example value
+  if_selflocation = 1,    # Example value
+  if_follow = 1,        # Example value
+  ifcross_inactive = 0  # Example value
+)
+
+
+quantiles <- seq(0.01, 0.99, by = 0.01)
+
+# Predict survival times for the defined quantiles using specific covariate values
+pred_surv <- predict(model.logn, newdata = specific_covariates, type = "quantile", p = quantiles)
+
+# Create a data frame for the fitted survival curve
+fitted_data <- data.frame(
+  Survival_Time = pred_surv,
+  Survival_Probability = 1 - quantiles
+)
+
+# Plot the survival curves
+ggplot(fitted_data, aes(x = Survival_Time, y = Survival_Probability)) +
+  geom_line(color = "blue") +
+  labs(title = "Fitted Survival Curve for Specific Covariate Values",
+       x = "Survival Time",
+       y = "Survival Probability") +
+       xlim(0, 30)  +
+  theme_minimal()
+```
+
+```{r}
+# hazard
+# Hazard function approximation
+hazard <- -diff(log(fitted_data$Survival_Probability)) / diff(fitted_data$Survival_Time)
+
+# Create a data frame for the hazard function
+hazard_data <- data.frame(
+  Time = fitted_data$Survival_Time[-length(fitted_data$Survival_Time)],
+  Hazard = hazard
+)
+
+# Plot the hazard function
+ggplot(hazard_data, aes(x = Time, y = Hazard)) +
+  geom_line(color = "red") +
+  labs(title = "Hazard Function",
+       x = "Time",
+       y = "Hazard") +
+  theme_minimal()
+```
+
+```{r}
+# Load necessary libraries
+library(survival)
+library(ggplot2)
+
+# Define specific covariate values for completion_rate = 0.2 and completion_rate = 0.8
+covariates_0.2 <- data.frame(
+  traffic_density = 0,  # Example value
+  map_type = 1,           # Example value
+  sbsod_score = 3,        # Specific value
+  gender = 0,             # Example value
+  age = 0,                # Specific value for age
+  mobile_map_freq_num = 1, # Specific value for mobile map frequency
+  is_shortcut = 1,        # Example value
+  ifcross_preactive = 0, # Example value
+  completion_rate = 0.2,  # Specific value for completion rate
+  if_pan = 1,             # Example value
+  if_zoom = 1,            # Example value
+  if_selflocation = 1,    # Example value
+  if_follow = 1,          # Example value
+  ifcross_inactive = 0    # Example value
+)
+
+covariates_0.8 <- covariates_0.2
+covariates_0.8$completion_rate <- 0.8  # Change completion rate
+
+# Define quantiles for prediction
+quantiles <- seq(0.01, 0.99, by = 0.01)
+
+# Predict survival times for both completion rates
+pred_surv_0.2 <- predict(model.logn, newdata = covariates_0.2, type = "quantile", p = quantiles)
+pred_surv_0.8 <- predict(model.logn, newdata = covariates_0.8, type = "quantile", p = quantiles)
+
+# Create data frames for plotting
+fitted_data_0.2 <- data.frame(
+  Completion_Rate = "0.2",
+  Survival_Time = pred_surv_0.2,
+  Survival_Probability = 1 - quantiles
+)
+
+fitted_data_0.8 <- data.frame(
+  Completion_Rate = "0.8",
+  Survival_Time = pred_surv_0.8,
+  Survival_Probability = 1 - quantiles
+)
+
+plot_data <- rbind(fitted_data_0.2, fitted_data_0.8)
+
+# Plot the survival curves
+ggplot(plot_data, aes(x = Survival_Time, y = Survival_Probability, color = Completion_Rate)) +
+  geom_line() +
+  labs(title = "Survival Curves for Different Completion Rates",
+       x = "Survival Time",
+       y = "Survival Probability",
+       color = "Completion Rate") +
+  xlim(0, 20)  +
+  theme_minimal()
+
+```
+
+normalization
+
+```{r}
+# Min-Max normalization function
+min_max_normalize <- function(x) {
+  (x - min(x)) / (max(x) - min(x))
+}
+
+# Exclude the 'state' column and normalize the rest
+column_to_exclude <- df$state
+df_data <- df[ , !names(df) %in% 'state']  # Remove 'state' column
+df_normalized_data <- as.data.frame(lapply(df_data, min_max_normalize))  # Normalize
+
+# Combine normalized data with the excluded column
+df_normalized <- cbind(df_normalized_data, state = column_to_exclude)
+
+# Remove rows where total_inactive_time is zero
+df <- df_normalized[df_normalized$total_inactive_time != 0, ]
+
+
+```
+
+```{r cars}
+# Create a survival object
+surv_obj <- Surv(time = df$total_inactive_time, event = df$state)
+
+
+# Fit the Kaplan-Meier model
+fit1 <- survfit(surv_obj ~ 1, data = df)  # The ~ 1 means no grouping variable
+summary(fit1)
+
+# Plot the survival curves with x-axis limits and custom values
+library(ggplot2)
+library(survminer)
+
+ggsurv <- ggsurvplot(fit1, data = df, 
+                     xlab = "Total Inactive Time", 
+                     ylab = "Survival Rate",
+                     xlim = c(0, 50),
+                     ggtheme = theme_minimal())
+
+# Customize x-axis values
+ggsurv$plot <- ggsurv$plot + 
+  scale_x_continuous(breaks = seq(0, 50, by = 10))  # Change the breaks as needed
+
+# Display the plot
+print(ggsurv)
+
+```
+
+hazard function
+
+```{r}
+# Calculate the hazard function
+time_points <- fit1$time
+survival_prob <- fit1$surv
+
+# Approximate the hazard function
+hazard <- -diff(log(survival_prob)) / diff(time_points)
+
+# Create a data frame for plotting
+hazard_data <- data.frame(
+  Time = time_points[-length(time_points)],
+  Hazard = hazard
+)
+# Plot the hazard function
+ggplot(hazard_data, aes(x = Time, y = Hazard)) +
+  geom_line(color = "blue") +
+  labs(title = "Hazard Function",
+       x = "Time",
+       y = "Hazard") +
+  xlim(0,50)
+  theme_minimal()
+
+```
+
+```{r pressure, echo=FALSE}
+
+
+```
+
+```{r pressure, echo=FALSE}
+# Perform the log-rank test
+logrank_test <- survdiff(surv_obj ~ age, data = df)
+print(logrank_test)
+
+```
+
+```{r}
+# Fit the Kaplan-Meier survival curves
+fit <- survfit(surv_obj ~ age, data = df)
+# Plot the survival curves with ggsurvplot
+ggsurv <- ggsurvplot(fit, data = df, 
+                     xlab = "Total Inactive Time", 
+                     ylab = "Survival Rate",
+                     pval = TRUE,        # Add p-value from log-rank test
+                     ggtheme = theme_minimal(),
+                     legend.title = "Traffic Density",
+                     xlim = c(0, 50),
+                     legend.labs = c("1", "2", '3'))
+
+# Customize x-axis values
+ggsurv$plot <- ggsurv$plot + 
+  scale_x_continuous(breaks = seq(0, 50, by = 10))  # Adjust the breaks as needed
+
+# Display the plot
+print(ggsurv)
+
+```
+
+```{r}
+# Perform the log-rank test
+logrank_test <- survdiff(surv_obj ~ crossroad, data = df)
+print(logrank_test)
+
+```
+
+```{r}
+# Fit the Kaplan-Meier survival curves
+fit1 <- survfit(surv_obj ~ map_type, data = df)
+# Plot the survival curves with ggsurvplot
+ggsurv <- ggsurvplot(fit1, data = df, 
+                     xlab = "Total Inactive Time", 
+                     ylab = "Survival Rate",
+                     pval = TRUE,        # Add p-value from log-rank test
+                     ggtheme = theme_minimal(),
+                     legend.title = "Map Type",
+                     xlim = c(0, 50),
+                     legend.labs = c("Adaptive", "No-adaptive"))
+
+# Customize x-axis values
+ggsurv$plot <- ggsurv$plot + 
+  scale_x_continuous(breaks = seq(0, 50, by = 10))  # Adjust the breaks as needed
+
+# Display the plot
+print(ggsurv)
+```
+
+```{r}
+# Fit Cox regression model
+cox_model <- coxph(Surv(total_inactive_time, state) ~  map_type , data = df)
+summary(cox_model)
+
+
+```
+
+```{r}
+# simplt linear regression
+
+# Fit the linear model
+linear_model <- lm(total_inactive_time ~ age +  mobile_map_freq_num + sbsod_score, data = df)
+
+# Summarize the model
+summary(linear_model)
+
+# Calculate AIC
+model_aic <- AIC(linear_model)
+
+# Print the AIC value
+print(model_aic)
+
+```
+
+```{r}
+# Fit the linear model
+model <- lm(total_inactive_time ~ time_previous + time_diff, data = df)
+
+# 1. Linearity
+par(mfrow = c(1, 1))
+plot(df$total_inactive_time, predict(model), xlab = "Observed Values", ylab = "Predicted Values", main = "Observed vs. Predicted")
+abline(0, 1, col = "red")
+
+# Residuals vs. predictor variables
+par(mfrow = c(1, 2))
+plot(df$time_previous, residuals(model), xlab = "time_previous", ylab = "Residuals", main = "Residuals vs. time_previous")
+abline(h = 0, col = "red")
+plot(df$time_diff, residuals(model), xlab = "time_diff", ylab = "Residuals", main = "Residuals vs. time_diff")
+abline(h = 0, col = "red")
+
+# 2. Independence (Durbin-Watson test)
+install.packages("lmtest")
+library(lmtest)
+dwtest(model)
+
+# 3. Homoscedasticity
+par(mfrow = c(1, 1))
+plot(predict(model), residuals(model), xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted Values")
+abline(h = 0, col = "red")
+
+# Breusch-Pagan test
+bptest(model)
+
+# 4. Normality
+par(mfrow = c(1, 1))
+qqnorm(residuals(model), main = "Q-Q Plot")
+qqline(residuals(model), col = "red")
+
+# Shapiro-Wilk test
+shapiro.test(residuals(model))
+
+
+
+```
+
+```{r}
+# plot 4 basic 
+# Fit the Kaplan-Meier survival model
+surv_object <- Surv(time = df$total_inactive_time, event = df$state)
+fit <- survfit(surv_object ~ 1)
+
+# Plot the Survival Function
+ggsurvplot(fit, data = df, risk.table = TRUE, title = "Survival Function")
+
+# Plot the Cumulative Distribution Function (Cdf)
+ggsurvplot(fit, data = df, fun = "event", title = "Cumulative Distribution Function (Cdf)")
+
+# Plot the Probability Density Function (Pdf)
+ggplot(df, aes(x = total_inactive_time)) +
+  geom_density(fill = "blue", alpha = 0.5) +
+  labs(title = "Probability Density Function (Pdf)", x = "Time", y = "Density")
+
+# Plot the Cumulative Hazard Function
+ggsurvplot(fit, data = df, fun = "cumhaz", title = "Cumulative Hazard Function")
+
+# Compute the Hazard Function using Cox proportional hazards model
+cox_model <- coxph(Surv(total_inactive_time, state) ~ 1, data = df)
+base_haz <- basehaz(cox_model, centered = FALSE)
+
+# Plot the Hazard Function
+ggplot(base_haz, aes(x = time, y = hazard)) +
+  geom_line() +
+  labs(title = "Hazard Function", x = "Time", y = "Hazard")
+
+```
+
+AFT model and variable selection:
+
+```{r}
+library(survival)
+library(MASS)
+# Create a survival object
+surv_obj <- Surv(time = df$total_inactive_time, event = df$state)
+
+initial_model <- survreg(surv_obj ~  age +  mobile_map_freq_num + sbsod_score + traffic_density, data = df ,  dist = "weibull")
+summary(initial_model)
+```
+
+```{r}
+# Calculate AIC
+model_aic <- AIC(initial_model)
+
+# Print the AIC value
+print(model_aic)
+
+```

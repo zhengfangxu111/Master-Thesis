@@ -1,0 +1,203 @@
+---
+title: "trajectory_analysis_phase"
+output: html_document
+date: "2024-03-19"
+---
+
+```{r setup, include=FALSE}
+# Read data and assign startplan in the column state. Then there are startplan/start/end in column state.
+library(dplyr)
+df <- read.csv("dataframe_allroutename.csv")
+
+# Ensure the DataFrame is sorted by DateTime if it's not already sorted
+df <- df %>% arrange(DateTime)
+# Add startplan in column state
+df$startplan <- FALSE
+planning_indices <- which(df$phase == "planning")
+
+for (i in planning_indices) {
+  if (i > 1 && df$phase[i - 1] == "planning") {
+    next
+  } else {
+    df$startplan[i] <- TRUE
+  }
+}
+
+df$state[df$startplan == TRUE] <- 'startplan'
+
+```
+
+
+```{r setup, include=FALSE}
+
+# Convert DateTime column to POSIXct format to calculate time difference
+df$DateTime <- as.POSIXct(df$DateTime)
+
+# Initialize an empty list to store the results
+result_list <- list()
+
+# Iterate through each participant from 8 to 63 (excluding 11,14) and scenario
+for (participant in c(8:10, 12:13, 15:63)) {
+  for (scenario in 1:4) {
+    
+    # Filter the dataframe for the current participant and scenario
+    filtered_df <- df %>% filter(participant == !!participant & scenario == !!scenario)
+    
+    #___________________________________planning phase 
+    # Find the index of 'startplan' and 'start' states
+    startplan_index <- which(filtered_df$state == 'startplan')
+    start_index <- which(filtered_df$state == 'start')
+    
+    # ___________time
+    if (length(startplan_index) > 0 && length(start_index) > 0) {
+      planning_time <- sum(difftime(filtered_df$DateTime[start_index], filtered_df$DateTime[startplan_index], units = "secs"))
+    } 
+    
+    # ___________distance/stops
+    if (length(startplan_index) > 0 && length(start_index) > 0) {
+      # Initialize vectors to store distances and stop counts
+      planning_distances <- c()
+      planning_stops <- c()
+      
+      # Iterate over each pair of 'startplan' and 'start' states
+      for (i in 1:min(length(startplan_index), length(start_index))) {
+        
+        planning_subset <- filtered_df[startplan_index[i]:start_index[i], c("posX", "posZ")]
+        
+        # Calculate distances between consecutive points
+        distances <- sqrt(diff(planning_subset$posX)^2 + diff(planning_subset$posZ)^2)
+        # Calculate number of stops
+        pstops <- sum(duplicated(planning_subset[c("posX", "posZ")]) & !duplicated(planning_subset[c("posX", "posZ")], fromLast = TRUE))
+        
+        # Append distances and stop counts to respective vectors
+        planning_distances <- c(planning_distances, distances)
+        planning_stops <- c(planning_stops, pstops)
+      }
+      
+      # Sum the distances/stops to get the total length of planning phase
+      planning_length <- sum(planning_distances)
+      number_planning_stops <- sum(planning_stops)
+    }
+    
+    
+    # ___________speed
+    planning_time_numeric <- as.numeric(planning_time)
+    planning_speed <- ifelse(!is.na(planning_time_numeric) && planning_time_numeric != 0,
+                             planning_length / planning_time_numeric,
+                             NA)
+    
+    
+    
+    
+    #___________________________________navigating phase  
+    # Find the index of 'start' and 'end' states
+    start_index <- which(filtered_df$state == 'start')
+    end_index <- which(filtered_df$state == 'end')
+    
+    # ___________time
+    if (length(start_index) > 0 && length(end_index) > 0) {
+      navigating_time <- sum(difftime(filtered_df$DateTime[end_index], filtered_df$DateTime[start_index], units = "secs"))
+    }
+        scenario_time <- ifelse(is.na(planning_time) | is.na(navigating_time), NA, planning_time + navigating_time)
+    
+    # ___________distance/stops
+    # If both 'start' and 'end' states exist
+    if (length(start_index) > 0 && length(end_index) > 0) {
+      navigating_distances <- c()
+      navigating_stops <- c()
+      
+      # Iterate over each pair of 'start' and 'end' states
+      for (i in 1:min(length(start_index), length(end_index))) {
+        
+        navigating_subset <- filtered_df[start_index[i]:end_index[i], c("posX", "posZ")]
+        # Calculate distances between consecutive points
+        distances <- sqrt(diff(navigating_subset$posX)^2 + diff(navigating_subset$posZ)^2)
+        # Calculate number of stops
+        nstops <- sum(duplicated(navigating_subset[c("posX", "posZ")]) & !duplicated(navigating_subset[c("posX", "posZ")], fromLast = TRUE))
+        
+        # Append distances and stop counts to respective vectors
+        navigating_distances <- c(navigating_distances, distances)
+        navigating_stops <- c(navigating_stops, nstops)
+      }
+      
+      # Sum the distances/stops to get the total length of navigating phase
+      navigating_length <- sum(navigating_distances)
+      number_navigating_stops <- sum(navigating_stops)
+    } 
+        
+    #___________speed 
+    navigating_time_numeric <- as.numeric(navigating_time)
+    navigation_speed <- ifelse(!is.na(navigating_time_numeric) && navigating_time_numeric != 0,
+                               navigating_length / navigating_time_numeric,
+                               NA)
+    
+    result <- list(
+      participant = participant,
+      scenario = scenario,
+      planning_time = planning_time,
+      planning_length = planning_length,
+      navigating_time = navigating_time,
+      navigating_length = navigating_length,
+      scenario_time = scenario_time,
+      planning_speed = planning_speed,
+      navigation_speed = navigation_speed,
+      number_planning_stops = number_planning_stops,
+      number_navigating_stops =number_navigating_stops
+      
+    )
+    # Append the result to the result list
+    result_list <- c(result_list, list(result))
+  }
+}
+
+# Create a dataframe from the result list
+result_df <- do.call(rbind, result_list)
+
+```
+
+compare the time with Mona's output
+```{r setup, include=FALSE}
+# Read data 
+df_mona <- read.csv("task_phase_time_bind_v2.csv")
+library(dplyr)
+
+# Group by 'id' and 'scenario_id', then summarize the task_phase_time
+dff <- df_mona %>%
+  group_by(id, scenario_id) %>%
+  summarise(
+    planning_time = sum(task_phase_time_sum[p_desc == "planning"]),
+    navigating_time = sum(task_phase_time_sum[p_desc == "navigating"])
+  ) %>%
+  ungroup()
+
+# Print the resulting dataframe
+print(dff)
+
+# Assuming your first dataframe is named df1 and the second one is df2
+
+# Merge the two dataframes based on 'participant' and 'scenario'
+merged_df <- merge(result_df, dff, by.x = c("participant", "scenario"), by.y = c("id", "scenario_id"))
+# Convert planning_time columns to numeric
+merged_df$planning_time.x <- as.numeric(merged_df$planning_time.x)
+merged_df$planning_time.y <- as.numeric(merged_df$planning_time.y)
+
+# Convert navigating_time columns to numeric
+merged_df$navigating_time.x <- as.numeric(merged_df$navigating_time.x)
+merged_df$navigating_time.y <- as.numeric(merged_df$navigating_time.y)
+
+# Calculate the differences
+merged_df$planning_time_difference <- merged_df$planning_time.x - merged_df$planning_time.y
+merged_df$navigating_time_difference <- merged_df$navigating_time.x - merged_df$navigating_time.y
+
+# Print the resulting dataframe
+options(scipen = 999)
+print(merged_df)
+# Keep only the time difference columns
+time_difference_df <- merged_df[c('participant','scenario', "planning_time_difference", "navigating_time_difference")]
+
+# Print the resulting dataframe
+print(time_difference_df)
+
+
+```
+

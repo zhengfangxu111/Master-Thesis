@@ -1,0 +1,6 @@
+df_standard: only navigating phase
+df_standard1: delete the screen_unlock mapinteractions if it is too close to checkin point (distance<5)
+df_shortcuts: subset of trajectory with shortcut
+df_noshortcuts: subset of trajectory without shortcuts
+df_align: align original trajectory to roadnetwork (with road segment name) (only for trajectory without shortcuts)
+df_nosmall_seg: change the segment name of small segment to the subsequent one

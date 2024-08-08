@@ -1,0 +1,10 @@
+Trajectory:
+1. The number of times walking through shortcuts. (Technical implementation)
+2. The number of times not going to the nearest POI.
+
+Planning and Navigating:
+1. Any correlation between planning time and navigating time (more planning, less navigating time/ more planning, less map checking times)
+
+
+Q
+walking lenght/phase+scenario, avg speed/phase+scenario, avg walking stops/phase+scenario, avg walking duration/phase+scenario
